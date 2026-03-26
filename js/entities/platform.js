@@ -55,6 +55,14 @@ export function createPlatform(x, y, w, h, type = 'solid', options = {}) {
     case 'bouncy':
       return { ...base, bounceAnim: 0 }
 
+    case 'locked':
+      return {
+        ...base,
+        solid: false,
+        keyId: options.keyId || 'key1',
+        unlocked: false
+      }
+
     case 'icy':
       return base
 
@@ -75,6 +83,8 @@ export function updatePlatform(platform, playerRect) {
       return updateHidden(platform, playerRect)
     case 'bouncy':
       return updateBouncy(platform)
+    case 'locked':
+      return platform
     default:
       return platform
   }
@@ -180,6 +190,19 @@ function isStandingOn(playerRect, platform) {
 export function renderPlatform(platform) {
   if (!platform.visible || platform.collapsed) return
   if (platform.type === 'hidden' && !platform.revealed) return
+  if (platform.type === 'locked' && !platform.unlocked) {
+    const ctx = document.getElementById('game').getContext('2d')
+    ctx.globalAlpha = 0.35
+    drawPlatform(platform.x, platform.y, platform.w, platform.h, 'solid')
+    // Draw keyhole icon
+    ctx.fillStyle = '#f1c40f'
+    ctx.font = '10px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText('\u{1F512}', platform.x + platform.w / 2, platform.y + platform.h / 2 + 4)
+    ctx.textAlign = 'left'
+    ctx.globalAlpha = 1
+    return
+  }
 
   const ctx = document.getElementById('game').getContext('2d')
 

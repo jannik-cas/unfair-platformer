@@ -473,3 +473,184 @@ export function drawPlayerGhost(x, y, frame = 0, facingRight = true) {
   ctx.fillText('training data', x + 8, y - 4)
   ctx.restore()
 }
+
+export function drawShieldEffect(x, y, timer) {
+  const ctx = getCtx()
+  ctx.save()
+
+  const cx = x + 7
+  const cy = y + 10
+  const radius = 18
+  const sides = 6
+  const alpha = (Math.sin(timer * 0.1) + 1) / 2 * 0.4 + 0.3
+
+  ctx.strokeStyle = `rgba(52, 152, 219, ${alpha})`
+  ctx.lineWidth = 2
+
+  ctx.beginPath()
+  for (let i = 0; i < sides; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 6
+    const vx = cx + radius * Math.cos(angle)
+    const vy = cy + radius * Math.sin(angle)
+    if (i === 0) {
+      ctx.moveTo(vx, vy)
+    } else {
+      ctx.lineTo(vx, vy)
+    }
+  }
+  ctx.closePath()
+  ctx.stroke()
+
+  // Tiny blue sparkles at vertices that pulse
+  const sparkAlpha = (Math.sin(timer * 0.15 + 1) + 1) / 2 * 0.6
+  ctx.fillStyle = `rgba(116, 185, 255, ${sparkAlpha})`
+  for (let i = 0; i < sides; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 6
+    const vx = cx + radius * Math.cos(angle)
+    const vy = cy + radius * Math.sin(angle)
+    ctx.fillRect(vx - 1, vy - 1, 2, 2)
+  }
+
+  ctx.restore()
+}
+
+export function drawDashIndicator(x, y) {
+  const ctx = getCtx()
+  ctx.save()
+
+  ctx.globalAlpha = 0.8
+  ctx.fillStyle = '#e67e22'
+
+  // Right-pointing triangle at (x+18, y+6), size ~8x6px
+  const tx = x + 18
+  const ty = y + 6
+  ctx.beginPath()
+  ctx.moveTo(tx, ty)
+  ctx.lineTo(tx + 8, ty + 3)
+  ctx.lineTo(tx, ty + 6)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.restore()
+}
+
+export function drawUnderworldBackground(scrollX = 0) {
+  const ctx = getCtx()
+
+  // Deep underworld gradient — deep red to dark purple
+  const gradient = ctx.createLinearGradient(0, 0, 0, 480)
+  gradient.addColorStop(0, '#1a0a0a')
+  gradient.addColorStop(0.5, '#1a0a1a')
+  gradient.addColorStop(1, '#1a0a2e')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 800, 480)
+
+  // Floating underworld neural network — red nodes and orange connections
+  drawUnderworldNeuralNetBg(ctx, scrollX)
+
+  // Loss curve silhouettes at TOP of screen (inverted world feel)
+  ctx.fillStyle = '#2a0808'
+  drawUnderworldLossCurve(ctx, scrollX * 0.1, 60, 60, 0.006)
+
+  ctx.fillStyle = '#1f0d0d'
+  drawUnderworldLossCurve(ctx, scrollX * 0.2, 45, 45, 0.01)
+}
+
+function drawUnderworldNeuralNetBg(ctx, scrollX) {
+  // Network layers — columns of nodes with connections
+  const layers = [80, 220, 380, 540, 700]
+  const nodesPerLayer = [3, 5, 5, 4, 3]
+
+  ctx.globalAlpha = 0.06
+
+  for (let l = 0; l < layers.length; l++) {
+    const lx = (layers[l] + scrollX * 0.03) % 850 - 50
+    const nodes = nodesPerLayer[l]
+    const startY = 60
+    const spacing = 60
+
+    for (let n = 0; n < nodes; n++) {
+      const ny = startY + n * spacing
+
+      // Node circle — red
+      ctx.fillStyle = '#aa3333'
+      ctx.beginPath()
+      ctx.arc(lx, ny, 5, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Connections to next layer — orange
+      if (l < layers.length - 1) {
+        const nextLx = (layers[l + 1] + scrollX * 0.03) % 850 - 50
+        const nextNodes = nodesPerLayer[l + 1]
+        const nextStartY = 60
+
+        ctx.strokeStyle = '#aa5533'
+        ctx.lineWidth = 0.5
+        for (let nn = 0; nn < nextNodes; nn++) {
+          const nny = nextStartY + nn * spacing
+          ctx.beginPath()
+          ctx.moveTo(lx, ny)
+          ctx.lineTo(nextLx, nny)
+          ctx.stroke()
+        }
+      }
+    }
+  }
+
+  // Floating underworld ML labels
+  ctx.font = '7px monospace'
+  ctx.textAlign = 'left'
+  ctx.globalAlpha = 0.2
+  const seeds = [40, 155, 290, 430, 580, 710, 95, 350, 500, 650, 120, 480, 320, 760]
+  const labels = ['loss: -Inf', 'epoch: -1', 'lr: 666', 'batch: undefined', 'loss: -Inf', 'epoch: -1', 'lr: 666', 'batch: undefined', 'loss: -Inf', 'epoch: -1', 'lr: 666', 'batch: undefined', 'loss: -Inf', 'epoch: -1']
+  for (let i = 0; i < seeds.length; i++) {
+    const fx = (seeds[i] + scrollX * 0.04) % 820
+    const fy = 30 + (seeds[(i + 2) % seeds.length] * 0.7) % 320
+    ctx.fillStyle = i % 3 === 0 ? '#aa5533' : '#aa3333'
+    ctx.fillText(labels[i % labels.length], fx, fy)
+  }
+
+  // Epoch progress bar — very subtle, near top
+  ctx.globalAlpha = 0.04
+  ctx.fillStyle = '#aa3333'
+  ctx.fillRect(30, 12, 740, 2)
+  ctx.globalAlpha = 0.08
+  const progress = ((scrollX * 0.01) % 1 + 1) % 1
+  ctx.fillRect(30, 12, 740 * progress, 2)
+
+  ctx.globalAlpha = 1
+}
+
+function drawUnderworldLossCurve(ctx, scrollX, baseY, maxH, freq) {
+  // Draw a jagged loss-curve silhouette across the TOP (inverted)
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+
+  for (let px = 0; px <= 800; px += 4) {
+    const t = (px + scrollX) * freq
+    // Noisy loss curve with occasional spikes — inverted direction
+    const base = Math.sin(t) * 0.3 + Math.sin(t * 2.7) * 0.2 + Math.sin(t * 0.3) * 0.5
+    const spike = Math.abs(Math.sin(t * 5.1)) > 0.92 ? 0.4 : 0
+    const h = (base + spike + 1) * 0.5 * maxH
+    ctx.lineTo(px, baseY + h)
+  }
+
+  ctx.lineTo(800, 0)
+  ctx.closePath()
+  ctx.fill()
+}
+
+export function drawUnderworldVignette() {
+  const ctx = getCtx()
+  ctx.save()
+
+  // Radial gradient from center (alpha 0) to edges (dark overlay)
+  const gradient = ctx.createRadialGradient(400, 240, 80, 400, 240, 520)
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0)')
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)')
+
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 800, 480)
+
+  ctx.restore()
+}

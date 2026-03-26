@@ -51,8 +51,13 @@ export function renderHUD(deaths, levelNum, totalLevels = 20, corrupted = false,
   // Level indicator
   ctx.textAlign = 'left'
   ctx.font = '14px monospace'
-  ctx.fillStyle = '#888'
-  ctx.fillText(`Level ${levelNum}/${totalLevels}`, 15, 25)
+  if (levelNum >= 100) {
+    ctx.fillStyle = '#aa3333'
+    ctx.fillText(`\u2620 UW-${levelNum - 100}`, 15, 25)
+  } else {
+    ctx.fillStyle = '#888'
+    ctx.fillText(`Level ${levelNum}/${totalLevels}`, 15, 25)
+  }
 
   // Streak counter
   if (streak >= 2) {

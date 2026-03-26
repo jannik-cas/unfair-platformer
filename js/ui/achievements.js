@@ -13,6 +13,12 @@ const ACHIEVEMENTS = [
   { id: 'explosion', name: 'Gradient Explosion', desc: '10 Tode in einem Level' },
   { id: 'rollback', name: 'git revert HEAD', desc: 'Finde das versteckte Ziel in Level 16' },
   { id: 'pip', name: 'pip install resilience', desc: 'Benutze das Terminal im Men\u00FC' },
+  { id: 'first_stomp', name: 'Bug Squasher', desc: 'Besiege deinen ersten Feind' },
+  { id: 'underworld', name: '/dev/null', desc: 'Entdecke die Unterwelt' },
+  { id: 'black_swan', name: 'Der Schwarze Schwan', desc: 'Schlie\u00DFe alle Unterwelt-Levels ab' },
+  { id: 'all_keys', name: 'Full Access', desc: 'Sammle alle Keys in Level 22' },
+  { id: 'shield_save', name: 'Containerized', desc: 'Shield absorbiert einen t\u00F6dlichen Treffer' },
+  { id: 'dash_master', name: 'Gradient Descent', desc: 'Benutze den Dash um eine L\u00FCcke zu \u00FCberwinden' },
 ]
 
 let unlocked = {}

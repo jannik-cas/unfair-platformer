@@ -27,6 +27,18 @@ import {
   dismissLevelComplete, renderLevelComplete
 } from './ui/level-complete.js'
 import { isJustPressed } from './engine/input.js'
+import {
+  updateCrawler, updateFloater, updateTurret,
+  renderCrawler, renderFloater, renderTurret,
+  getEnemyHitbox, checkEnemyStomp, stompEnemy, getStompBounceVelocity
+} from './entities/enemy.js'
+import {
+  updatePickup, checkPickupCollision, collectPickup, renderPickup
+} from './entities/pickup.js'
+import { drawShieldEffect, drawDashIndicator, drawUnderworldBackground, drawUnderworldVignette } from './sprites/pixel-art.js'
+import { isUnderworldLevel, discoverUnderworld } from './levels/level-manager.js'
+import { createProjectile } from './entities/projectile.js'
+import { overlaps as overlapsRect } from './engine/collision.js'
 
 // Game state
 let state = 'menu'
@@ -119,6 +131,17 @@ registerLevel(17, () => import('./levels/level-17.js'), 'Lights Out')
 registerLevel(18, () => import('./levels/level-18.js'), 'Overfitting Trap')
 registerLevel(19, () => import('./levels/level-19.js'), 'Shadow Deploy')
 registerLevel(20, () => import('./levels/level-20.js'), 'Der Letzte Push')
+registerLevel(21, () => import('./levels/level-21.js'), 'Adversarial Inputs')
+registerLevel(22, () => import('./levels/level-22.js'), 'Feature Engineering')
+registerLevel(23, () => import('./levels/level-23.js'), 'Ensemble Methods')
+registerLevel(24, () => import('./levels/level-24.js'), 'Transfer Learning')
+registerLevel(25, () => import('./levels/level-25.js'), 'The Singularity')
+// Underworld levels (hidden, 101-105)
+registerLevel(101, () => import('./levels/underworld-1.js'), 'Unterfitting')
+registerLevel(102, () => import('./levels/underworld-2.js'), 'The Loss Landscape')
+registerLevel(103, () => import('./levels/underworld-3.js'), 'Backpropagation')
+registerLevel(104, () => import('./levels/underworld-4.js'), 'Adversarial Training')
+registerLevel(105, () => import('./levels/underworld-5.js'), 'Der Schwarze Schwan')
 
 async function startGame(startFrom = 1) {
   deaths = 0
@@ -143,8 +166,21 @@ async function startLevel(num) {
 }
 
 async function nextLevel() {
-  // Save progress
   const completed = getCurrentLevelNum()
+
+  // Underworld progression: 101→102→...→105→back to 7
+  if (isUnderworldLevel(completed)) {
+    const next = completed + 1
+    if (next > 105) {
+      unlock('black_swan')
+      await startLevel(7) // Return to overworld
+      return
+    }
+    await startLevel(next)
+    return
+  }
+
+  // Save progress
   const prev = parseInt(localStorage.getItem('unfair-progress') || '0', 10)
   if (completed > prev) {
     localStorage.setItem('unfair-progress', completed.toString())
@@ -183,13 +219,22 @@ function update() {
   if (state === 'levelTransition') {
     levelTransitionTimer -= 1
     if (levelTransitionTimer <= 0) {
-      nextLevel()
-      if (state !== 'victory') {
-        state = 'playing'
+      const level = getCurrentLevel()
+      if (level && level._warpTarget) {
+        const target = level._warpTarget
+        startLevel(target).then(() => { state = 'playing' })
+        state = 'loading'
+      } else {
+        nextLevel()
+        if (state !== 'victory') {
+          state = 'playing'
+        }
       }
     }
     return
   }
+
+  if (state === 'loading') return
 
   if (state === 'victory') return
   if (state !== 'playing') return
@@ -232,14 +277,147 @@ function update() {
     checkControlZones(level.controlZones, player, level.frameCount)
   }
 
-  // Get solid platforms for collision
-  const solidPlatforms = updatedPlatforms.filter(p => p.solid && p.visible !== false)
+  // Initialize projectile array (turrets may add to it)
+  let allProjectiles = [...(level.projectiles || [])]
 
-  // Update player
-  const newPlayer = updatePlayer(player, solidPlatforms, [...hazards, ...projHazards], gravityDir)
+  // Update locked platforms and level-flagged platform changes
+  const unlockedPlatforms = updatedPlatforms.map((p, idx) => {
+    if (p.type === 'locked' && !p.unlocked && level._keysCollected && level._keysCollected[p.keyId]) {
+      return { ...p, solid: true, unlocked: true, visible: true }
+    }
+    // Support customUpdate marking specific platforms as non-solid (e.g., underworld crack)
+    if (level._disablePlatformIndex === idx) {
+      return { ...p, solid: false }
+    }
+    return p
+  })
+
+  // Update enemies
+  let updatedEnemies = (level.enemies || []).map(e => {
+    if (e.type === 'crawler') return updateCrawler(e)
+    if (e.type === 'floater') return updateFloater(e)
+    if (e.type === 'turret') {
+      const { turret, newProjectiles } = updateTurret(e, player, createProjectile)
+      for (const np of newProjectiles) {
+        allProjectiles = [...allProjectiles, np]
+      }
+      return turret
+    }
+    return e
+  })
+
+  // Update pickups
+  const updatedPickups = (level.pickups || []).map(p => updatePickup(p))
+
+  // Get solid platforms for collision
+  const solidPlatforms = unlockedPlatforms.filter(p => p.solid && p.visible !== false)
+
+  // Shield and dash state
+  const shielded = (level._shield || 0) > 0
+  const dashActive = (level._dashFrames || 0) > 0
+
+  // Pre-check underworld warp (before updatePlayer kills on fall-off-screen)
+  if (level._warpToUnderworld && !player.dead &&
+      player.y > GAME_HEIGHT + 15) {
+    level._warpToUnderworld = false
+    discoverUnderworld()
+    unlock('underworld')
+    state = 'levelTransition'
+    levelTransitionTimer = 1
+    // Override nextLevel to go to underworld
+    level._warpTarget = 101
+    return
+  }
+
+  // Update player — skip hazards if shielded or dashing (handled after)
+  const skipHazards = shielded || dashActive
+  const newPlayer = updatePlayer(player, solidPlatforms, skipHazards ? [] : [...hazards, ...projHazards], gravityDir)
+
+  // Shield absorbs spike/projectile hit
+  if (shielded && !dashActive && !newPlayer.dead) {
+    const allHazards = [...hazards, ...projHazards]
+    for (const h of allHazards) {
+      if (overlapsRect(newPlayer, h)) {
+        level._shield = 0
+        triggerFlash('#3498db', 0.3)
+        unlock('shield_save')
+        break
+      }
+    }
+  }
+
+  // Enemy collision (stomp vs kill) — only when player is alive and not dashing
+  let playerAfterEnemies = newPlayer
+  if (!newPlayer.dead && !dashActive) {
+    for (let i = 0; i < updatedEnemies.length; i++) {
+      const enemy = updatedEnemies[i]
+      const hitbox = getEnemyHitbox(enemy)
+      if (!hitbox) continue
+      if (!overlapsRect(playerAfterEnemies, hitbox)) continue
+
+      const result = checkEnemyStomp(playerAfterEnemies, enemy)
+      if (result === 'stomp') {
+        updatedEnemies = updatedEnemies.map((e, idx) => idx === i ? stompEnemy(e) : e)
+        playerAfterEnemies = { ...playerAfterEnemies, vy: getStompBounceVelocity() }
+        unlock('first_stomp')
+      } else if (result === 'kill') {
+        if (shielded) {
+          level._shield = 0
+          triggerFlash('#3498db', 0.3)
+          unlock('shield_save')
+        } else {
+          playerAfterEnemies = killPlayer(playerAfterEnemies)
+        }
+      }
+    }
+  }
+
+  // Pickup collection
+  let collectedPickups = updatedPickups
+  if (!playerAfterEnemies.dead) {
+    collectedPickups = updatedPickups.map(pickup => {
+      if (pickup.collected) return pickup
+      if (!checkPickupCollision(pickup, playerAfterEnemies)) return pickup
+      const collected = collectPickup(pickup)
+      if (pickup.type === 'key' && pickup.keyId) {
+        level._keysCollected = { ...(level._keysCollected || {}), [pickup.keyId]: true }
+      }
+      if (pickup.type === 'shield') {
+        level._shield = pickup.duration
+      }
+      if (pickup.type === 'dash') {
+        level._hasDash = true
+      }
+      triggerFlash('#f1c40f', 0.15)
+      return collected
+    })
+  }
+
+  // Dash input (Shift key)
+  if (level._hasDash && !playerAfterEnemies.dead && (isJustPressed('ShiftLeft') || isJustPressed('ShiftRight'))) {
+    level._hasDash = false
+    level._dashFrames = 3
+    const dashDir = playerAfterEnemies.facingRight ? 1 : -1
+    playerAfterEnemies = { ...playerAfterEnemies, vx: 32 * dashDir }
+    triggerFlash('#e67e22', 0.15)
+    unlock('dash_master')
+  }
+
+  // Dash frame countdown
+  if ((level._dashFrames || 0) > 0) {
+    level._dashFrames -= 1
+  }
+
+  // Shield timer countdown
+  if ((level._shield || 0) > 0) {
+    level._shield -= 1
+  }
+
+  // Use player after enemy checks
+  const finalPlayer = playerAfterEnemies
 
   // Death detection
-  if (newPlayer.dead && !prevPlayerDead) {
+  if (finalPlayer.dead && !prevPlayerDead) {
     deaths += 1
     levelDeathsThisLevel += 1
     deathFreeStreak = 0
@@ -261,7 +439,7 @@ function update() {
   }
 
   // Reset gravity, controls, and projectiles when player respawns
-  if (prevPlayerDead && !newPlayer.dead) {
+  if (prevPlayerDead && !finalPlayer.dead) {
     gravityDir = 1
     level.gravityDir = 1
     setReversed(false)
@@ -278,10 +456,9 @@ function update() {
     }))
   }
 
-  prevPlayerDead = newPlayer.dead
+  prevPlayerDead = finalPlayer.dead
 
-  // Update projectile spawners
-  let allProjectiles = [...(level.projectiles || [])]
+  // Update projectile spawners (note: allProjectiles may already have turret projectiles)
   const updatedSpawners = level.projectileSpawners.map(spawner => {
     const { spawner: updated, newProjectiles } = updateProjectileSpawner(spawner, player, allProjectiles)
     allProjectiles = [...allProjectiles, ...newProjectiles]
@@ -294,13 +471,13 @@ function update() {
   // Check goals
   let levelComplete = false
   const updatedGoals = level.goals.map(goal => {
-    if (newPlayer.dead) return goal
-    const result = checkGoal(goal, newPlayer)
+    if (finalPlayer.dead) return goal
+    const result = checkGoal(goal, finalPlayer)
     if (result.event === 'complete') {
       levelComplete = true
     }
     if (result.event === 'kill') {
-      player = killPlayer(newPlayer)
+      player = killPlayer(finalPlayer)
       deaths += 1
       triggerFlash('#ff0000', 0.4)
       triggerScreenShake(5)
@@ -312,7 +489,19 @@ function update() {
 
   // Custom level update
   if (level.customUpdate) {
-    level.customUpdate(level, newPlayer, level.frameCount)
+    level.customUpdate(level, finalPlayer, level.frameCount)
+  }
+
+  // Underworld warp check (backup — also checked pre-updatePlayer)
+  if (level._warpToUnderworld && !finalPlayer.dead &&
+      finalPlayer.y > GAME_HEIGHT + 15) {
+    level._warpToUnderworld = false
+    discoverUnderworld()
+    unlock('underworld')
+    state = 'levelTransition'
+    levelTransitionTimer = 1
+    level._warpTarget = 101
+    return
   }
 
   // Update fake UI
@@ -321,7 +510,7 @@ function update() {
   }
 
   // Apply updates
-  player = levelComplete ? player : newPlayer
+  player = levelComplete ? player : finalPlayer
   // EE6: Advance ghost playback frame
   const ghostFrame = (level.ghostData && level.ghostFrame != null)
     ? level.ghostFrame + 1
@@ -329,9 +518,11 @@ function update() {
 
   setCurrentLevel({
     ...level,
-    platforms: updatedPlatforms,
+    platforms: unlockedPlatforms,
     spikes: updatedSpikes,
     goals: updatedGoals,
+    enemies: updatedEnemies,
+    pickups: collectedPickups,
     projectileSpawners: updatedSpawners,
     projectiles: allProjectiles,
     gravityDir,
@@ -344,10 +535,10 @@ function update() {
   }
 
   // EE6: Record ghost data while player is alive
-  if (!newPlayer.dead && !levelComplete) {
+  if (!finalPlayer.dead && !levelComplete) {
     ghostRecording.push({
-      x: newPlayer.x, y: newPlayer.y,
-      frame: newPlayer.frame, facingRight: newPlayer.facingRight
+      x: finalPlayer.x, y: finalPlayer.y,
+      frame: finalPlayer.frame, facingRight: finalPlayer.facingRight
     })
     // Cap at 3000 frames (~50 seconds)
     if (ghostRecording.length > 3000) {
@@ -356,7 +547,7 @@ function update() {
   }
 
   // Level timer (only count while player is alive)
-  if (!newPlayer.dead) {
+  if (!finalPlayer.dead) {
     levelTimeFrames += 1
   }
 
@@ -433,7 +624,11 @@ function render() {
   const corrupted = nanCorruptionTimer > 0
 
   // Background
-  drawBackground(0, corrupted)
+  if (isUnderworldLevel(getCurrentLevelNum())) {
+    drawUnderworldBackground(0)
+  } else {
+    drawBackground(0, corrupted)
+  }
 
   // Signs
   for (const sign of level.signs) {
@@ -459,6 +654,18 @@ function render() {
   // Projectiles
   for (const proj of level.projectiles || []) {
     renderProjectile(proj)
+  }
+
+  // Enemies
+  for (const enemy of level.enemies || []) {
+    if (enemy.type === 'crawler') renderCrawler(enemy)
+    else if (enemy.type === 'floater') renderFloater(enemy)
+    else if (enemy.type === 'turret') renderTurret(enemy)
+  }
+
+  // Pickups
+  for (const pickup of level.pickups || []) {
+    renderPickup(pickup)
   }
 
   // Goals
@@ -487,6 +694,16 @@ function render() {
     } else {
       renderPlayer(player)
     }
+  }
+
+  // Shield effect overlay on player
+  if (player && !player.dead && (level._shield || 0) > 0) {
+    drawShieldEffect(player.x, player.y, level._shield)
+  }
+
+  // Dash indicator
+  if (player && !player.dead && level._hasDash) {
+    drawDashIndicator(player.x, player.y)
   }
 
   // Fake UI overlay

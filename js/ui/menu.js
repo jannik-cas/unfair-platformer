@@ -1,6 +1,6 @@
 import { getCtx, GAME_WIDTH, GAME_HEIGHT, getCanvasMousePos } from '../engine/canvas.js'
 import { isJustPressed, getLastTypedChar } from '../engine/input.js'
-import { getTotalLevels, getLevelNames } from '../levels/level-manager.js'
+import { getTotalLevels, getLevelNames, isUnderworldDiscovered, getUnderworldLevels } from '../levels/level-manager.js'
 import { setGoldenHoodie, drawPlayer } from '../sprites/pixel-art.js'
 import { triggerFlash } from './screen-flash.js'
 import {
@@ -201,22 +201,48 @@ export function updateMenu() {
   if (menuState === 'levelSelect') {
     const total = getTotalLevels()
     const cols = 5
+    const uwDiscovered = isUnderworldDiscovered()
+    const uwLevels = uwDiscovered ? getUnderworldLevels() : []
+
+    // Build navigable level list: [1..total, 101..105]
+    const allLevels = []
+    for (let i = 1; i <= total; i++) allLevels.push(i)
+    for (const uw of uwLevels) allLevels.push(uw)
+
+    const curIdx = allLevels.indexOf(selectedLevel)
 
     if (isJustPressed('Escape') || isJustPressed('Backspace')) {
       menuState = 'title'
       return null
     }
     if (isJustPressed('ArrowRight') || isJustPressed('KeyD')) {
-      selectedLevel = Math.min(total, selectedLevel + 1)
+      if (curIdx >= 0 && curIdx < allLevels.length - 1) {
+        selectedLevel = allLevels[curIdx + 1]
+      }
     }
     if (isJustPressed('ArrowLeft') || isJustPressed('KeyA')) {
-      selectedLevel = Math.max(1, selectedLevel - 1)
+      if (curIdx > 0) {
+        selectedLevel = allLevels[curIdx - 1]
+      }
     }
     if (isJustPressed('ArrowDown') || isJustPressed('KeyS')) {
-      selectedLevel = Math.min(total, selectedLevel + cols)
+      if (selectedLevel <= total) {
+        const next = Math.min(total, selectedLevel + cols)
+        // If at bottom row of main grid and UW exists, jump to UW
+        if (next === selectedLevel && uwLevels.length > 0) {
+          selectedLevel = uwLevels[0]
+        } else {
+          selectedLevel = next
+        }
+      }
     }
     if (isJustPressed('ArrowUp') || isJustPressed('KeyW')) {
-      selectedLevel = Math.max(1, selectedLevel - cols)
+      if (selectedLevel >= 100) {
+        // Jump from underworld back to last row of main grid
+        selectedLevel = Math.max(1, total - (total % cols || cols) + 1)
+      } else {
+        selectedLevel = Math.max(1, selectedLevel - cols)
+      }
     }
     if (isJustPressed('Space') || isJustPressed('Enter')) {
       menuState = 'title'
@@ -538,11 +564,59 @@ function renderLevelSelect(ctx) {
     }
   }
 
+  // Underworld section
+  if (isUnderworldDiscovered()) {
+    const uwLevels = getUnderworldLevels()
+    const uwY = startY + rows * (cardH + gapY) + 10
+
+    ctx.font = 'bold 14px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#aa3333'
+    ctx.fillText('\u2620 UNDERWORLD \u2620', GAME_WIDTH / 2, uwY)
+
+    const uwCardW = 130
+    const uwStartX = (GAME_WIDTH - uwLevels.length * (uwCardW + gapX) + gapX) / 2
+    for (let j = 0; j < uwLevels.length; j++) {
+      const uwNum = uwLevels[j]
+      const ux = uwStartX + j * (uwCardW + gapX)
+      const uy = uwY + 10
+      const isSelected = uwNum === selectedLevel
+
+      ctx.fillStyle = isSelected ? '#2a1020' : '#150810'
+      ctx.fillRect(ux, uy, uwCardW, cardH)
+      ctx.strokeStyle = isSelected ? '#aa3333' : '#331122'
+      ctx.lineWidth = isSelected ? 2 : 1
+      ctx.strokeRect(ux, uy, uwCardW, cardH)
+
+      ctx.font = 'bold 14px monospace'
+      ctx.textAlign = 'left'
+      ctx.fillStyle = isSelected ? '#aa3333' : '#663333'
+      ctx.fillText(`${uwNum - 100}`, ux + 8, uy + 22)
+
+      ctx.font = '9px monospace'
+      ctx.fillStyle = isSelected ? '#ccc' : '#666'
+      ctx.fillText(names[uwNum] || `UW-${uwNum - 100}`, ux + 8, uy + 42)
+
+      const uwStats = getLevelStats(uwNum)
+      if (uwStats) {
+        const stars = getStarsForDeaths(uwStats.bestDeaths)
+        ctx.font = '10px monospace'
+        ctx.textAlign = 'right'
+        let starStr = ''
+        for (let s = 0; s < 3; s++) {
+          starStr += s < stars ? '\u2605' : '\u2606'
+        }
+        ctx.fillStyle = stars > 0 ? '#f1c40f' : '#333'
+        ctx.fillText(starStr, ux + uwCardW - 6, uy + 20)
+      }
+    }
+  }
+
   // Footer
   ctx.font = '13px monospace'
   ctx.textAlign = 'center'
   ctx.fillStyle = '#666'
-  const footerY = startY + rows * (cardH + gapY) + 20
+  const footerY = startY + rows * (cardH + gapY) + (isUnderworldDiscovered() ? 100 : 20)
   ctx.fillText('Arrows to navigate  |  SPACE to start  |  ESC to go back', GAME_WIDTH / 2, footerY)
 
   ctx.restore()

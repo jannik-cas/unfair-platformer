@@ -33,6 +33,8 @@ export async function loadLevel(num) {
     gravityZones: levelData.gravityZones || [],
     controlZones: levelData.controlZones || [],
     signs: levelData.signs || [],
+    enemies: levelData.enemies || [],
+    pickups: levelData.pickups || [],
     customUpdate: levelData.customUpdate || null,
     customRender: levelData.customRender || null,
     customPostRender: levelData.customPostRender || null,
@@ -68,7 +70,29 @@ export function getCurrentLevelNum() {
 }
 
 export function getTotalLevels() {
-  return Object.keys(levelModules).length
+  return Object.keys(levelModules).filter(k => parseInt(k, 10) < 100).length
+}
+
+export function isUnderworldLevel(num) {
+  return num >= 100
+}
+
+export function getUnderworldLevels() {
+  return Object.keys(levelModules).filter(k => parseInt(k, 10) >= 100).map(Number).sort((a, b) => a - b)
+}
+
+export function isUnderworldDiscovered() {
+  try {
+    return localStorage.getItem('unfair-underworld-discovered') === 'true'
+  } catch (_e) {
+    return false
+  }
+}
+
+export function discoverUnderworld() {
+  try {
+    localStorage.setItem('unfair-underworld-discovered', 'true')
+  } catch (_e) { /* full */ }
 }
 
 export function getLevelNames() {
