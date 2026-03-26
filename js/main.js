@@ -288,6 +288,11 @@ function update() {
 
   // Apply updates
   player = levelComplete ? player : newPlayer
+  // EE6: Advance ghost playback frame
+  const ghostFrame = (level.ghostData && level.ghostFrame != null)
+    ? level.ghostFrame + 1
+    : level.ghostFrame
+
   setCurrentLevel({
     ...level,
     platforms: updatedPlatforms,
@@ -295,7 +300,8 @@ function update() {
     goals: updatedGoals,
     projectileSpawners: updatedSpawners,
     projectiles: allProjectiles,
-    gravityDir
+    gravityDir,
+    ghostFrame
   })
 
   // EE4: Decrement NaN corruption timer
@@ -313,11 +319,6 @@ function update() {
     if (ghostRecording.length > 3000) {
       ghostRecording.shift()
     }
-  }
-
-  // EE6: Advance ghost playback frame
-  if (level.ghostData && level.ghostFrame != null) {
-    level.ghostFrame += 1
   }
 
   updateScreenEffects()
@@ -405,8 +406,8 @@ function render() {
     level.customRender(level, ctx)
   }
 
-  // EE6: Ghost replay (render before real player)
-  if (level.ghostData && level.ghostFrame != null && level.ghostFrame < level.ghostData.length) {
+  // EE6: Ghost replay (render before real player, min 60 frames to avoid stale ghosts)
+  if (level.ghostData && level.ghostData.length > 60 && level.ghostFrame != null && level.ghostFrame < level.ghostData.length) {
     const g = level.ghostData[level.ghostFrame]
     drawPlayerGhost(g.x, g.y, g.frame, g.facingRight)
   }
