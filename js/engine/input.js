@@ -2,6 +2,7 @@ const keys = {}
 const justPressed = {}
 let reversed = false
 let clickHandler = null
+let lastTypedChar = null
 
 export function initInput() {
   window.addEventListener('keydown', (e) => {
@@ -9,6 +10,9 @@ export function initInput() {
       justPressed[e.code] = true
     }
     keys[e.code] = true
+    if (e.key.length === 1) {
+      lastTypedChar = e.key
+    }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
       e.preventDefault()
     }
@@ -59,6 +63,12 @@ export function onCanvasClick(handler) {
   clickHandler = handler
   const canvas = document.getElementById('game')
   canvas.addEventListener('click', handler)
+}
+
+export function getLastTypedChar() {
+  const ch = lastTypedChar
+  lastTypedChar = null
+  return ch
 }
 
 export function removeCanvasClick() {

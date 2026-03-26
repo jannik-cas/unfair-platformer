@@ -1,4 +1,5 @@
 import { getCtx, GAME_WIDTH } from '../engine/canvas.js'
+import { isGoldenHoodie } from '../sprites/pixel-art.js'
 
 let deathShake = 0
 let levelNameAlpha = 0
@@ -15,7 +16,7 @@ export function triggerDeathShake() {
   deathShake = 8
 }
 
-export function renderHUD(deaths, levelNum, totalLevels = 15) {
+export function renderHUD(deaths, levelNum, totalLevels = 15, corrupted = false) {
   const ctx = getCtx()
 
   // Death counter
@@ -27,13 +28,20 @@ export function renderHUD(deaths, levelNum, totalLevels = 15) {
   ctx.font = 'bold 20px monospace'
   ctx.textAlign = 'right'
 
+  const label = isGoldenHoodie() ? 'Severity-0s' : 'Incidents'
+  const displayDeaths = corrupted ? 'NaN' : deaths
+
   // Shadow
   ctx.fillStyle = '#000'
-  ctx.fillText(`Incidents: ${deaths}`, GAME_WIDTH - 14 + shakeX, 30 + shakeY + 1)
+  ctx.fillText(`${label}: ${displayDeaths}`, GAME_WIDTH - 14 + shakeX, 30 + shakeY + 1)
 
   // Main text
-  ctx.fillStyle = deaths > 50 ? '#ff2222' : deaths > 20 ? '#ff8844' : '#ffffff'
-  ctx.fillText(`Incidents: ${deaths}`, GAME_WIDTH - 15 + shakeX, 30 + shakeY)
+  if (corrupted) {
+    ctx.fillStyle = Math.floor(Date.now() / 80) % 2 === 0 ? '#ff2222' : '#ffffff'
+  } else {
+    ctx.fillStyle = deaths > 50 ? '#ff2222' : deaths > 20 ? '#ff8844' : '#ffffff'
+  }
+  ctx.fillText(`${label}: ${displayDeaths}`, GAME_WIDTH - 15 + shakeX, 30 + shakeY)
 
   // Level indicator
   ctx.textAlign = 'left'

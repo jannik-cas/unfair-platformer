@@ -35,8 +35,18 @@ export async function loadLevel(num) {
     signs: levelData.signs || [],
     customUpdate: levelData.customUpdate || null,
     customRender: levelData.customRender || null,
+    customPostRender: levelData.customPostRender || null,
     fakeUI: levelData.fakeUI || null
   }
+
+  // EE6: Load ghost data if available
+  try {
+    const ghostRaw = localStorage.getItem('unfair-ghost-' + num)
+    if (ghostRaw) {
+      currentLevel.ghostData = JSON.parse(ghostRaw)
+      currentLevel.ghostFrame = 0
+    }
+  } catch (_e) { /* corrupt ghost data, ignore */ }
 
   currentLevelNum = num
   setReversed(false)

@@ -5,9 +5,22 @@ const HAIR = '#2c2c2c'
 const SKIN = '#f5c6a5'
 const GLASSES = '#ffffff'
 const HOODIE = '#00b894'
+const HOODIE_GOLD = '#f1c40f'
+const HOODIE_GOLD_HIGHLIGHT = '#f9e547'
 const PANTS = '#2d3436'
 const SHOES = '#636e72'
 const EYES = '#000'
+
+let goldenHoodie = localStorage.getItem('unfair-golden-hoodie') === 'true'
+
+export function setGoldenHoodie(val) {
+  goldenHoodie = val
+  localStorage.setItem('unfair-golden-hoodie', val.toString())
+}
+
+export function isGoldenHoodie() {
+  return goldenHoodie
+}
 
 export function drawPlayer(x, y, frame = 0, facingRight = true) {
   const ctx = getCtx()
@@ -40,11 +53,16 @@ export function drawPlayer(x, y, frame = 0, facingRight = true) {
   ctx.fillRect(x + 9, y + 5, 1, 1)
 
   // Hoodie body
-  ctx.fillStyle = HOODIE
+  ctx.fillStyle = goldenHoodie ? HOODIE_GOLD : HOODIE
   ctx.fillRect(x + 4, y + 9, 8, 5)
-  ctx.fillStyle = '#55efc4'
+  ctx.fillStyle = goldenHoodie ? HOODIE_GOLD_HIGHLIGHT : '#55efc4'
   ctx.fillRect(x + 7, y + 9, 1, 3)
   ctx.fillRect(x + 8, y + 9, 1, 2)
+  // Golden star badge
+  if (goldenHoodie) {
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(x + 5, y + 11, 1, 1)
+  }
 
   // Legs
   ctx.fillStyle = PANTS
@@ -290,19 +308,19 @@ export function drawSign(x, y, text) {
   ctx.fillText(text, x + cx, y + 13)
 }
 
-export function drawBackground(scrollX = 0) {
+export function drawBackground(scrollX = 0, corrupted = false) {
   const ctx = getCtx()
 
   // Deep neural network gradient
   const gradient = ctx.createLinearGradient(0, 0, 0, 480)
-  gradient.addColorStop(0, '#0a0f1a')
-  gradient.addColorStop(0.4, '#0d1b2a')
-  gradient.addColorStop(1, '#1b1a2e')
+  gradient.addColorStop(0, corrupted ? '#1a0a0a' : '#0a0f1a')
+  gradient.addColorStop(0.4, corrupted ? '#2a0d0d' : '#0d1b2a')
+  gradient.addColorStop(1, corrupted ? '#2e1b1b' : '#1b1a2e')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 800, 480)
 
   // Floating neural network — subtle background nodes and connections
-  drawNeuralNetBg(ctx, scrollX)
+  drawNeuralNetBg(ctx, scrollX, corrupted)
 
   // Loss curve silhouettes (distant — like a training chart)
   ctx.fillStyle = '#0d1926'
@@ -313,7 +331,7 @@ export function drawBackground(scrollX = 0) {
   drawLossCurve(ctx, scrollX * 0.2, 440, 45, 0.01)
 }
 
-function drawNeuralNetBg(ctx, scrollX) {
+function drawNeuralNetBg(ctx, scrollX, corrupted = false) {
   // Network layers — columns of nodes with connections
   const layers = [80, 220, 380, 540, 700]
   const nodesPerLayer = [3, 5, 5, 4, 3]
@@ -330,9 +348,11 @@ function drawNeuralNetBg(ctx, scrollX) {
       const ny = startY + n * spacing
 
       // Node circle
-      ctx.fillStyle = '#00d4aa'
+      const jx = corrupted ? (Math.random() * 4 - 2) : 0
+      const jy = corrupted ? (Math.random() * 4 - 2) : 0
+      ctx.fillStyle = corrupted ? '#ff4444' : '#00d4aa'
       ctx.beginPath()
-      ctx.arc(lx, ny, 5, 0, Math.PI * 2)
+      ctx.arc(lx + jx, ny + jy, 5, 0, Math.PI * 2)
       ctx.fill()
 
       // Connections to next layer
@@ -357,13 +377,15 @@ function drawNeuralNetBg(ctx, scrollX) {
   // Floating ML terms (mixed loss values + hyperparams)
   ctx.font = '7px monospace'
   ctx.textAlign = 'left'
-  ctx.globalAlpha = 0.07
+  ctx.globalAlpha = corrupted ? 0.2 : 0.07
   const seeds = [40, 155, 290, 430, 580, 710, 95, 350, 500, 650, 120, 480, 320, 760]
-  const labels = ['0.847', 'NaN', 'lr=0.001', '1e-5', 'batch=32', 'inf', 'epoch 47', '0.69', 'loss\u2193', 'nan', 'dim=768', 'acc=0.91', 'F1=0.83', 'grad\u2207']
+  const labels = corrupted
+    ? ['NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN', 'NaN']
+    : ['0.847', 'NaN', 'lr=0.001', '1e-5', 'batch=32', 'inf', 'epoch 47', '0.69', 'loss\u2193', 'nan', 'dim=768', 'acc=0.91', 'F1=0.83', 'grad\u2207']
   for (let i = 0; i < seeds.length; i++) {
     const fx = (seeds[i] + scrollX * 0.04) % 820
     const fy = 30 + (seeds[(i + 2) % seeds.length] * 0.7) % 320
-    ctx.fillStyle = i % 3 === 0 ? '#ff6b35' : '#00d4aa'
+    ctx.fillStyle = corrupted ? '#ff2222' : (i % 3 === 0 ? '#ff6b35' : '#00d4aa')
     ctx.fillText(labels[i % labels.length], fx, fy)
   }
 
@@ -396,4 +418,58 @@ function drawLossCurve(ctx, scrollX, baseY, maxH, freq) {
   ctx.lineTo(800, 480)
   ctx.closePath()
   ctx.fill()
+}
+
+export function drawPlayerGhost(x, y, frame = 0, facingRight = true) {
+  const ctx = getCtx()
+  ctx.save()
+  ctx.globalAlpha = 0.25
+
+  if (!facingRight) {
+    ctx.translate(x + 16, y)
+    ctx.scale(-1, 1)
+    x = 0
+    y = 0
+  }
+
+  // Ghost uses green tint
+  const G_HAIR = '#1a3a2a'
+  const G_SKIN = '#88ddaa'
+  const G_HOODIE = '#00ff88'
+  const G_PANTS = '#1a4a2a'
+  const G_SHOES = '#336644'
+
+  ctx.fillStyle = G_HAIR
+  ctx.fillRect(x + 3, y + 0, 10, 4)
+  ctx.fillRect(x + 2, y + 1, 2, 2)
+
+  ctx.fillStyle = G_SKIN
+  ctx.fillRect(x + 4, y + 3, 8, 6)
+
+  ctx.fillStyle = G_HOODIE
+  ctx.fillRect(x + 4, y + 9, 8, 5)
+
+  ctx.fillStyle = G_PANTS
+  const legOffset = frame === 1 ? 1 : frame === 2 ? -1 : 0
+  ctx.fillRect(x + 4, y + 14, 3, 4)
+  ctx.fillRect(x + 9, y + 14, 3, 4)
+  if (legOffset !== 0) {
+    ctx.fillRect(x + 4, y + 14 + legOffset, 3, 4)
+    ctx.fillRect(x + 9, y + 14 - legOffset, 3, 4)
+  }
+
+  ctx.fillStyle = G_SHOES
+  ctx.fillRect(x + 4, y + 18 + (frame === 1 ? 1 : 0), 3, 2)
+  ctx.fillRect(x + 9, y + 18 + (frame === 2 ? 1 : 0), 3, 2)
+
+  ctx.restore()
+
+  // "training data" label
+  ctx.save()
+  ctx.globalAlpha = 0.2
+  ctx.font = '6px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#00ff88'
+  ctx.fillText('training data', x + 8, y - 4)
+  ctx.restore()
 }
