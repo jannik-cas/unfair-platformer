@@ -16,7 +16,7 @@ export function triggerDeathShake() {
   deathShake = 8
 }
 
-export function renderHUD(deaths, levelNum, totalLevels = 15, corrupted = false) {
+export function renderHUD(deaths, levelNum, totalLevels = 20, corrupted = false, levelDeaths = 0, levelTimeFrames = 0, streak = 0) {
   const ctx = getCtx()
 
   // Death counter
@@ -43,11 +43,34 @@ export function renderHUD(deaths, levelNum, totalLevels = 15, corrupted = false)
   }
   ctx.fillText(`${label}: ${displayDeaths}`, GAME_WIDTH - 15 + shakeX, 30 + shakeY)
 
+  // Per-level deaths (smaller, below total)
+  ctx.font = '12px monospace'
+  ctx.fillStyle = '#888'
+  ctx.fillText(`Lvl: ${corrupted ? 'NaN' : levelDeaths}`, GAME_WIDTH - 15, 48)
+
   // Level indicator
   ctx.textAlign = 'left'
   ctx.font = '14px monospace'
   ctx.fillStyle = '#888'
   ctx.fillText(`Level ${levelNum}/${totalLevels}`, 15, 25)
+
+  // Streak counter
+  if (streak >= 2) {
+    ctx.font = 'bold 12px monospace'
+    ctx.fillStyle = '#f1c40f'
+    ctx.fillText(`Streak: ${streak}`, 15, 42)
+  }
+
+  // Speedrun timer (top-center)
+  const totalSec = levelTimeFrames / 60
+  const mins = Math.floor(totalSec / 60)
+  const secs = (totalSec % 60).toFixed(1)
+  const timeStr = `${mins.toString().padStart(2, '0')}:${secs.padStart(4, '0')}`
+
+  ctx.textAlign = 'center'
+  ctx.font = '14px monospace'
+  ctx.fillStyle = '#666'
+  ctx.fillText(timeStr, GAME_WIDTH / 2, 25)
 
   // Level name (fading)
   if (levelNameAlpha > 0) {

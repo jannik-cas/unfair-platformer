@@ -3,10 +3,14 @@ import { isJustPressed, getLastTypedChar } from '../engine/input.js'
 import { getTotalLevels, getLevelNames } from '../levels/level-manager.js'
 import { setGoldenHoodie, drawPlayer } from '../sprites/pixel-art.js'
 import { triggerFlash } from './screen-flash.js'
+import {
+  getTotalStars, getMaxStars, getUnlockedCount, getTotalAchievements,
+  getLevelStats, getStarsForDeaths, renderAchievementScreen, unlock
+} from './achievements.js'
 
 let titleBounce = 0
 let blinkTimer = 0
-let menuState = 'title' // 'title' or 'levelSelect'
+let menuState = 'title' // 'title', 'levelSelect', or 'achievements'
 let selectedLevel = 1
 let highestCompleted = parseInt(localStorage.getItem('unfair-progress') || '0', 10)
 
@@ -112,6 +116,7 @@ export function updateMenu() {
         konamiTerminalTimer = 150
         setGoldenHoodie(true)
         konamiBuffer = []
+        unlock('konami')
       }
     }
 
@@ -147,6 +152,12 @@ export function updateMenu() {
         highestCompleted = parseInt(localStorage.getItem('unfair-progress') || '0', 10)
         return null
       }
+      if (isJustPressed('KeyA')) {
+        getLastTypedChar() // consume
+        removeTitleClick()
+        menuState = 'achievements'
+        return null
+      }
     }
 
     // Pip install typing detection
@@ -164,6 +175,7 @@ export function updateMenu() {
         if (PIP_TARGETS.includes(trimmed)) {
           pipTriggered = true
           pipAnimTimer = 0
+          unlock('pip')
         } else {
           typingBuffer = ''
           terminalVisible = false
@@ -176,6 +188,13 @@ export function updateMenu() {
       }
     }
 
+    return null
+  }
+
+  if (menuState === 'achievements') {
+    if (isJustPressed('Escape') || isJustPressed('Backspace')) {
+      menuState = 'title'
+    }
     return null
   }
 
@@ -234,6 +253,11 @@ export function renderMenu(totalDeaths) {
     return
   }
 
+  if (menuState === 'achievements') {
+    renderAchievementScreen(ctx)
+    return
+  }
+
   renderTitle(ctx, totalDeaths)
 }
 
@@ -278,10 +302,21 @@ function renderTitle(ctx, totalDeaths) {
     ctx.fillText('Press SPACE to deploy', GAME_WIDTH / 2, 330)
   }
 
-  // Level select hint
+  // Level select + achievements hints
   ctx.font = '14px monospace'
   ctx.fillStyle = '#00d4aa'
-  ctx.fillText('Press L for level select', GAME_WIDTH / 2, 360)
+  ctx.fillText('L level select  |  A achievements', GAME_WIDTH / 2, 360)
+
+  // Stars + achievements summary
+  const stars = getTotalStars()
+  const maxStars = getMaxStars(getTotalLevels())
+  const achCount = getUnlockedCount()
+  const achTotal = getTotalAchievements()
+  if (stars > 0 || achCount > 0) {
+    ctx.font = '12px monospace'
+    ctx.fillStyle = '#f1c40f'
+    ctx.fillText(`\u2605 ${stars}/${maxStars}  |  Achievements: ${achCount}/${achTotal}`, GAME_WIDTH / 2, 380)
+  }
 
   // Controls
   ctx.font = '13px monospace'
@@ -475,8 +510,27 @@ function renderLevelSelect(ctx) {
     const name = names[i] || `Level ${i}`
     ctx.fillText(name, cx + 8, cy + 42)
 
-    // Completed checkmark
-    if (isCompleted) {
+    // Stars + stats
+    const lvlStats = getLevelStats(i)
+    if (lvlStats) {
+      const stars = getStarsForDeaths(lvlStats.bestDeaths)
+      ctx.font = '10px monospace'
+      ctx.textAlign = 'right'
+
+      // Stars
+      let starStr = ''
+      for (let s = 0; s < 3; s++) {
+        starStr += s < stars ? '\u2605' : '\u2606'
+      }
+      ctx.fillStyle = stars > 0 ? '#f1c40f' : '#333'
+      ctx.fillText(starStr, cx + cardW - 6, cy + 20)
+
+      // Best deaths + time
+      const timeSec = (lvlStats.bestTime / 60).toFixed(1)
+      ctx.font = '8px monospace'
+      ctx.fillStyle = '#666'
+      ctx.fillText(`${lvlStats.bestDeaths}d  ${timeSec}s`, cx + cardW - 6, cy + 34)
+    } else if (isCompleted) {
       ctx.font = 'bold 14px monospace'
       ctx.textAlign = 'right'
       ctx.fillStyle = '#55efc4'

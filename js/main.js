@@ -18,6 +18,15 @@ import {
   applyScreenShake, renderFlash
 } from './ui/screen-flash.js'
 import { drawBackground, drawSign, drawPlayerGhost } from './sprites/pixel-art.js'
+import {
+  unlock, updateToast, renderToast, recordLevelComplete,
+  getStarsForDeaths, getDeathlessCount
+} from './ui/achievements.js'
+import {
+  showLevelComplete, updateLevelComplete, isLevelCompleteActive,
+  dismissLevelComplete, renderLevelComplete
+} from './ui/level-complete.js'
+import { isJustPressed } from './engine/input.js'
 
 // Game state
 let state = 'menu'
@@ -33,6 +42,10 @@ let nanCorruptionTimer = 0
 // EE6: Ghost recording/playback
 let ghostRecording = []
 let levelDeathsThisLevel = 0
+
+// Gamification state
+let levelTimeFrames = 0
+let deathFreeStreak = 0
 
 // Init
 const { ctx } = initCanvas()
@@ -124,6 +137,9 @@ async function startLevel(num) {
   // EE6: Reset ghost recording for this level
   ghostRecording = []
   levelDeathsThisLevel = 0
+
+  // Reset level timer
+  levelTimeFrames = 0
 }
 
 async function nextLevel() {
@@ -149,6 +165,17 @@ function update() {
     const result = updateMenu()
     if (result?.action === 'start') {
       startGame(result.level || 1)
+    }
+    return
+  }
+
+  if (state === 'levelComplete') {
+    updateLevelComplete()
+    updateToast()
+    if (isJustPressed('Space') || isJustPressed('Enter')) {
+      dismissLevelComplete()
+      state = 'levelTransition'
+      levelTransitionTimer = 30
     }
     return
   }
@@ -215,14 +242,21 @@ function update() {
   if (newPlayer.dead && !prevPlayerDead) {
     deaths += 1
     levelDeathsThisLevel += 1
+    deathFreeStreak = 0
     triggerFlash('#ff0000', 0.4)
     triggerScreenShake(5)
     triggerDeathShake()
+
+    // Achievements
+    unlock('first_death')
+    if (deaths + totalDeaths >= 100) unlock('deaths_100')
+    if (levelDeathsThisLevel >= 10) unlock('explosion')
 
     // EE4: NaN corruption at 42 deaths
     if (deaths === 42) {
       nanCorruptionTimer = 180
       triggerScreenShake(8)
+      unlock('nan_42')
     }
   }
 
@@ -321,13 +355,43 @@ function update() {
     }
   }
 
+  // Level timer (only count while player is alive)
+  if (!newPlayer.dead) {
+    levelTimeFrames += 1
+  }
+
+  // Achievement + toast updates
+  updateToast()
+
   updateScreenEffects()
 
   // Level complete transition
   if (levelComplete) {
     triggerFlash('#ffffff', 0.3)
-    state = 'levelTransition'
-    levelTransitionTimer = 30
+
+    // Record stats + check for new bests
+    const { isNewBestDeaths, isNewBestTime } = recordLevelComplete(
+      getCurrentLevelNum(), levelDeathsThisLevel, levelTimeFrames
+    )
+
+    // Show level complete screen
+    showLevelComplete(levelDeathsThisLevel, levelTimeFrames, isNewBestDeaths, isNewBestTime)
+    state = 'levelComplete'
+
+    // Track streak
+    if (levelDeathsThisLevel === 0) {
+      deathFreeStreak += 1
+    }
+
+    // Achievements
+    if (levelDeathsThisLevel === 0) unlock('deathless')
+    if (getDeathlessCount() >= 5) unlock('deathless_5')
+    if (levelTimeFrames < 600) unlock('speedrun') // 10 seconds at 60fps
+    if (getCurrentLevelNum() === 16) unlock('rollback')
+    if (getCurrentLevelNum() >= getTotalLevels()) {
+      unlock('beat_game')
+      if (deaths < 50) unlock('senior')
+    }
 
     // EE6: Save ghost if 0 deaths on this level
     if (levelDeathsThisLevel === 0 && ghostRecording.length > 0) {
@@ -355,6 +419,7 @@ function render() {
 
   if (state === 'victory') {
     renderVictoryScreen()
+    renderToast()
     ctx.restore()
     return
   }
@@ -428,12 +493,20 @@ function render() {
   renderFakeUI(level.fakeUI)
 
   // HUD
-  renderHUD(deaths, getCurrentLevelNum(), getTotalLevels(), corrupted)
+  renderHUD(deaths, getCurrentLevelNum(), getTotalLevels(), corrupted, levelDeathsThisLevel, levelTimeFrames, deathFreeStreak)
 
   // Custom post-render (after player + HUD, for overlays like darkness)
   if (level.customPostRender) {
     level.customPostRender(level, ctx)
   }
+
+  // Level complete overlay
+  if (state === 'levelComplete') {
+    renderLevelComplete()
+  }
+
+  // Achievement toast
+  renderToast()
 
   // Flash overlay
   renderFlash()
