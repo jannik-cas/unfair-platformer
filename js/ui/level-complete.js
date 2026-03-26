@@ -89,16 +89,17 @@ export function renderLevelComplete() {
   ctx.fillText(`Zeit: ${timeStr}`, centerX, statsY)
   ctx.fillText(`Tode: ${data.deaths}`, centerX, statsY + 28)
 
-  // New best indicators
+  // New best indicators (below stats)
   if (timer > 40) {
     ctx.font = 'bold 14px monospace'
-    if (data.isNewBestTime) {
-      ctx.fillStyle = '#f1c40f'
-      ctx.fillText('NEW BEST TIME!', centerX + 120, statsY)
-    }
-    if (data.isNewBestDeaths) {
-      ctx.fillStyle = '#f1c40f'
-      ctx.fillText('NEW BEST!', centerX + 100, statsY + 28)
+    ctx.fillStyle = '#f1c40f'
+    const bestY = statsY + 58
+    if (data.isNewBestTime && data.isNewBestDeaths) {
+      ctx.fillText('NEW BEST TIME & DEATHS!', centerX, bestY)
+    } else if (data.isNewBestTime) {
+      ctx.fillText('NEW BEST TIME!', centerX, bestY)
+    } else if (data.isNewBestDeaths) {
+      ctx.fillText('NEW BEST DEATHS!', centerX, bestY)
     }
   }
 
